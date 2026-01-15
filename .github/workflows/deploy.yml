@@ -17,19 +17,34 @@ jobs:
         env:
           NGROK_TOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
         run: |
-          # Installation rapide de Ngrok
+          # 1. Installation de Ngrok
           curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
           echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
           sudo apt update && sudo apt install ngrok
           
-          # Auth et lancement
+          # 2. Authentification et démarrage
           ngrok config add-authtoken $NGROK_TOKEN
           ngrok http 5000 > /dev/null &
-          sleep 10
           
-          # Récupération de l'URL et création de l'artefact
-          curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url' > url_preview.txt
-          echo "URL de preview générée : $(cat url_preview.txt)"
+          # 3. Attente prolongée pour laisser le temps au tunnel de s'ouvrir
+          echo "Attente de l'établissement du tunnel Ngrok (20s)..."
+          sleep 20
+          
+          # 4. Récupération de l'URL avec vérification
+          # On interroge l'API locale de l'agent Ngrok
+          PREVIEW_URL=$(curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
+          
+          # Sécurité : si l'URL est vide ou "null", on affiche une erreur
+          if [ "$PREVIEW_URL" = "null" ] || [ -z "$PREVIEW_URL" ]; then
+            echo "ERREUR : L'URL Ngrok n'a pas pu être générée à temps."
+            exit 1
+          fi
+
+          # 5. Écriture dans le fichier et affichage dans les logs
+          echo "$PREVIEW_URL" > url_preview.txt
+          echo "================================================"
+          echo "Lien de ton site : $PREVIEW_URL"
+          echo "================================================"
 
       - name: Upload URL Artifact
         uses: actions/upload-artifact@v4
