@@ -1,0 +1,41 @@
+name: Deploy Preview Ngrok
+on: [push]
+
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build and Run Docker
+        run: |
+          docker build -t flask-app .
+          docker run -d -p 5000:5000 --name web-server flask-app
+
+      - name: Setup Ngrok
+        env:
+          NGROK_TOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
+        run: |
+          # Installation rapide de Ngrok
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update && sudo apt install ngrok
+          
+          # Auth et lancement
+          ngrok config add-authtoken $NGROK_TOKEN
+          ngrok http 5000 > /dev/null &
+          sleep 10
+          
+          # Récupération de l'URL et création de l'artefact
+          curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url' > url_preview.txt
+          echo "URL de preview générée : $(cat url_preview.txt)"
+
+      - name: Upload URL Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-link
+          path: url_preview.txt
+
+      - name: Wait 300 seconds
+        run: sleep 300
